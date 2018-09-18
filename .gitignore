@@ -1,0 +1,12 @@
+#ignored folders
+/[Bb]inaries
+/[Dd]erivedDataCache
+/[Ii]ntermediate
+/[Ss]aved
+/Content/StarterContent/
+
+#ignored types
+*.sln
+*.sdf
+*.suo
+*.VC.db

@@ -4,6 +4,7 @@
 /[Ii]ntermediate
 /[Ss]aved
 /Content/StarterContent/
+/*vs/
 
 #ignored types
 *.sln

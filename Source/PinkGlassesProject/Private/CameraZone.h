@@ -22,28 +22,24 @@ protected:
 public:	
 	virtual void Tick(float DeltaTime) override;
 
-private:
-	//Количество промежуточных точек на триггере
+	//Количество промежуточных точек в зоне
 	UPROPERTY(EditAnywhere)
 		int IntermediatePointCount = 10;
-
-	//Путь камеры для этого триггера
-	UPROPERTY(EditAnywhere)
-		AActor* CameraPath = nullptr;
-
-	//Скорость движения камеры
-	UPROPERTY(EditAnywhere)
-		float MoveSpeed = 1.0f;
 
 	//Камера, которую будем двигать
 	UPROPERTY(EditAnywhere)
 		AActor* CameraReference = nullptr;
 
+	//Скорость движения камеры
+	UPROPERTY(EditAnywhere)
+		float MoveSpeed = 1.0f;
+
+	//Путь камеры для зоны
+	UPROPERTY(EditAnywhere)
+		USplineComponent* Path = nullptr;
+private:	
 	//Компонент камеры
 	UCameraComponent* Camera = nullptr;
-
-	//Компонент сплайна пути
-	USplineComponent* Path = nullptr;
 
 	//Компонент триггера
 	UBoxComponent* Zone = nullptr;
@@ -63,15 +59,14 @@ private:
 	int NextPointIndex = -1;
 	int PreviousPointIndex = -1;
 
-	//Позиция текущей промежуточной точки триггера
-	FVector CurrentTriggerPoint;
-
 	//Расстояние до ближайшей точки пути
 	float CurrentShortestPath;
 
+	//Позиция текущей промежуточной точки триггера
+	FVector CurrentTriggerPoint;
+
 	//Текущая позиция игрока
 	FVector PlayerCurrentLocation;
-
 private:
 	//Вычислить все промежуточные точки триггера
 	void CalculateIntermediatePoints();

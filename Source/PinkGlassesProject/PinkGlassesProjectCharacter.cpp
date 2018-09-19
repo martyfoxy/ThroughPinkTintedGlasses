@@ -14,12 +14,11 @@
 
 APinkGlassesProjectCharacter::APinkGlassesProjectCharacter()
 {
+	MovementForwardVector = FVector(1.0f, 0.0f, 0.0f);
+	MovementRightVector = FVector(0.0f, 1.0f, 0.0f);
+
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-
-	// set our turn rates for input
-	BaseTurnRate = 45.f;
-	BaseLookUpRate = 45.f;
 
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
@@ -48,26 +47,16 @@ void APinkGlassesProjectCharacter::SetupPlayerInputComponent(class UInputCompone
 
 	PlayerInputComponent->BindAxis("MoveForward", this, &APinkGlassesProjectCharacter::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight", this, &APinkGlassesProjectCharacter::MoveRight);
-
-	// We have 2 versions of the rotation bindings to handle different kinds of devices differently
-	// "turn" handles devices that provide an absolute delta, such as a mouse.
-	// "turnrate" is for devices that we choose to treat as a rate of change, such as an analog joystick
-	PlayerInputComponent->BindAxis("Turn", this, &APawn::AddControllerYawInput);
-	PlayerInputComponent->BindAxis("TurnRate", this, &APinkGlassesProjectCharacter::TurnAtRate);
-	PlayerInputComponent->BindAxis("LookUp", this, &APawn::AddControllerPitchInput);
-	PlayerInputComponent->BindAxis("LookUpRate", this, &APinkGlassesProjectCharacter::LookUpAtRate);
 }
 
-void APinkGlassesProjectCharacter::TurnAtRate(float Rate)
+void APinkGlassesProjectCharacter::ChangeForwardVector(FVector Direction)
 {
-	// calculate delta for this frame from the rate information
-	AddControllerYawInput(Rate * BaseTurnRate * GetWorld()->GetDeltaSeconds());
+	MovementForwardVector = Direction;
 }
 
-void APinkGlassesProjectCharacter::LookUpAtRate(float Rate)
+void APinkGlassesProjectCharacter::ChangeRightVector(FVector Direction)
 {
-	// calculate delta for this frame from the rate information
-	AddControllerPitchInput(Rate * BaseLookUpRate * GetWorld()->GetDeltaSeconds());
+	MovementRightVector = Direction;
 }
 
 void APinkGlassesProjectCharacter::MoveForward(float Value)
@@ -79,8 +68,8 @@ void APinkGlassesProjectCharacter::MoveForward(float Value)
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
 
 		// get forward vector
-		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-		AddMovementInput(Direction, Value);
+		//const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		AddMovementInput(MovementForwardVector, Value);
 	}
 }
 
@@ -93,8 +82,8 @@ void APinkGlassesProjectCharacter::MoveRight(float Value)
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
 	
 		// get right vector 
-		const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+		//const FVector Direction = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 		// add movement in that direction
-		AddMovementInput(Direction, Value);
+		AddMovementInput(MovementRightVector, Value);
 	}
 }

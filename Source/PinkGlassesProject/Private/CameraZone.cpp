@@ -14,19 +14,24 @@
 ACameraZone::ACameraZone()
 {
 	PrimaryActorTick.bCanEverTick = true;
-
+	
 	//Создаем триггер бокс
 	Zone = CreateDefaultSubobject<UBoxComponent>(TEXT("Zone"));
 	RootComponent = Zone;
 
 	//Создаем пустые мэши, обозначающие края триггера
 	R = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("R"));
-	R->SetupAttachment(RootComponent);
+	R->SetupAttachment(Zone);
 	R->SetRelativeLocation(FVector(-32.0f, 32.0f, 0.0f));
 
 	L = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("L"));
-	L->SetupAttachment(RootComponent);
+	L->SetupAttachment(Zone);
 	L->SetRelativeLocation(FVector(-32.0f, -32.0f, 0.0f));
+
+	//Создаем сплайн
+	Path = CreateDefaultSubobject<USplineComponent>(TEXT("Camera path"));
+	Path->SetupAttachment(Zone);
+	Path->bEditableWhenInherited = true;
 }
 
 //Инициализация
@@ -38,20 +43,13 @@ void ACameraZone::BeginPlay()
 	CalculateIntermediatePoints();
 
 	#pragma region DEBUG
+	//Отображение всех промежуточных точек
 	for (FVector triggerPoint : TriggetPoints)
-		DrawDebugSphere(GetWorld(), triggerPoint, 2, 12, FColor(0, 255, 0), false, 60.0f, 0, 1);
+		DrawDebugSphere(GetWorld(), triggerPoint, 2, 12, FColor(0, 255, 0), false, 1000.0f, 0, 1);
 	#pragma endregion
 
-	//Находим компонент сплайна у привязанного пути
-	if (CameraPath != nullptr)
-	{
-		Path = CameraPath->FindComponentByClass<USplineComponent>();
-
-		//Заполняем список всех контрольных точек сплайна
-		SplinePoints = GetAllSplinePoints();
-	}
-	else
-		UE_LOG(LogTemp, Warning, TEXT("Путь не привязан к зоне"));
+	//Заполняем список всех контрольных точек сплайна
+	SplinePoints = GetAllSplinePoints();
 
 	//Находим компонент камеры внутри выбранной SplineCamera
 	if (CameraReference != nullptr)
@@ -65,16 +63,21 @@ void ACameraZone::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	CurrentShortestPath = 10000.0f;
+	CurrentShortestPath = TNumericLimits<float>::Max();
 	CurrentTriggerPoint = FVector();
 
-	//Ищем ближайшую к игроку промежуточку точку 
 	TArray<AActor*> OverlappingActors;
-	Zone->GetOverlappingActors(OverlappingActors, TSubclassOf<APinkGlassesProjectCharacter>());
+	Zone->GetOverlappingActors(OverlappingActors, APinkGlassesProjectCharacter::StaticClass());
 
 	for (AActor* PlayerActor : OverlappingActors)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("В зону %s вошел игрок %s"), *(GetName()), *(PlayerActor->GetName()));
 		PlayerCurrentLocation = PlayerActor->GetActorLocation();
+
+		//Когда игрок заходит в зону, то меняем вектора направления в зависимости от направления зоны
+		APinkGlassesProjectCharacter* PlayerCharacter = Cast<APinkGlassesProjectCharacter>(PlayerActor);
+		PlayerCharacter->ChangeForwardVector(Zone->GetForwardVector());
+		PlayerCharacter->ChangeRightVector(Zone->GetRightVector());
 
 		//Смотрим все промежуточные точки, вычисляем расстояние между ними и игроком, и находим ту, которая находится ближе всего
 		for (FVector TriggerPoint : TriggetPoints)
@@ -92,6 +95,7 @@ void ACameraZone::Tick(float DeltaTime)
 		FVector SplinePoint = GetCurrentSplinePoint();
 
 		#pragma region DEBUG
+		//Отображаем, где находится точка для камеры
 		DrawDebugSphere(GetWorld(), SplinePoint, 10, 12, FColor::Orange, false, -1.0f, 0, 1);
 		#pragma endregion
 
@@ -111,7 +115,6 @@ void ACameraZone::Tick(float DeltaTime)
 //Получить все промежуточные точки зоны
 void ACameraZone::CalculateIntermediatePoints()
 {
-	//На всякий случай очищаем
 	TriggetPoints = TArray<FVector>();
 
 	FVector RightPoint = R->GetComponentLocation();
@@ -135,7 +138,7 @@ void ACameraZone::CalculateIntermediatePoints()
 	TriggetPoints.Add(RightPoint);
 }
 
-//Вспомогательный метод. Получить все точки сплайна
+//Получить все точки сплайна
 TArray<FSplinePoint> ACameraZone::GetAllSplinePoints()
 {
 	//Если сплайн не привязан к зоне, то выдаем пустой список
@@ -180,13 +183,14 @@ FVector ACameraZone::GetCurrentSplinePoint()
 	FVector NextPoint = Path->GetLocationAtSplinePoint(NextPointIndex, ESplineCoordinateSpace::World);
 
 	#pragma region DEBUG
+	//Отображаем линии до контрольных точек
 	DrawDebugLine(GetWorld(), CurrentTriggerPoint, CurrentPoint, FColor(0, 255, 0, 255), false, -1.0f, 0, 4.0f);
 	DrawDebugLine(GetWorld(), CurrentTriggerPoint, NextPoint, FColor(255, 0, 255, 255), false, -1.0f, 0, 2.0f);
 	DrawDebugLine(GetWorld(), CurrentTriggerPoint, PreviousPoint, FColor(255, 0, 0, 255), false, -1.0f, 0, 2.0f);
 	#pragma endregion
 
 	//Точка пересечения прямой между текущей и следующей точками, и плоскостью в позиции игрока
-	FVector PlaneIntersection = FMath::LinePlaneIntersection(CurrentPoint, NextPoint, PlayerCurrentLocation, Zone->GetRightVector());
+	FVector PlaneIntersection = FMath::LinePlaneIntersection(CurrentPoint, NextPoint, CurrentTriggerPoint /*PlayerCurrentLocation*/, Zone->GetRightVector());
 
 	FVector ResultPoint = Path->FindLocationClosestToWorldLocation(PlaneIntersection, ESplineCoordinateSpace::World);
 
@@ -197,6 +201,8 @@ FVector ACameraZone::GetCurrentSplinePoint()
 void ACameraZone::GetCurrentPointsIndex()
 {
 	FVector RightVector = Zone->GetRightVector();
+
+	/*bool bPointFound = false;*/
 
 	//Смотрим каждую контрольную точку сплайна
 	for (FSplinePoint Point : SplinePoints)
@@ -229,8 +235,12 @@ void ACameraZone::GetCurrentPointsIndex()
 		#pragma endregion
 
 		//Находим точку, с которой правый вектор составляет угол больше 90 градусов
-		if (angle >= 90)
+		if (angle >= 90/* && !bPointFound*/)
+		{
 			CurrentPointIndex = Point.InputKey;
+			/*bPointFound = true;*/
+		}
+			
 	}
 
 	//Случай когда мы в самом начале сплайна

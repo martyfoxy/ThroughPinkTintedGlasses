@@ -91,14 +91,12 @@ void ACameraZone::Tick(float DeltaTime)
 			}
 		}
 
+		//Обновим индексы точек
+		GetCurrentPointsIndex();
+
 		//Вычисляем точку сплайна для камеры
 		FVector SplinePoint = GetCurrentSplinePoint();
-
-		#pragma region DEBUG
-		//Отображаем, где находится точка для камеры
-		DrawDebugSphere(GetWorld(), SplinePoint, 10, 12, FColor::Orange, false, -1.0f, 0, 1);
-		#pragma endregion
-
+		
 		//Двигаем камеру
 		if (Camera != nullptr)
 		{
@@ -174,25 +172,24 @@ TArray<FSplinePoint> ACameraZone::GetAllSplinePoints()
 //Получить точку на сплайне для камеры
 FVector ACameraZone::GetCurrentSplinePoint()
 {
-	//Обновим индексы точек
-	GetCurrentPointsIndex();
-
 	//Найдем мировые координаты нужных нам контрольных точек сплайна
 	FVector CurrentPoint = Path->GetLocationAtSplinePoint(CurrentPointIndex, ESplineCoordinateSpace::World);
-	FVector PreviousPoint = Path->GetLocationAtSplinePoint(PreviousPointIndex, ESplineCoordinateSpace::World);
-	FVector NextPoint = Path->GetLocationAtSplinePoint(NextPointIndex, ESplineCoordinateSpace::World);
+	FVector OtherPoint = Path->GetLocationAtSplinePoint(OtherPointIndex, ESplineCoordinateSpace::World);
+
+	//Точка пересечения прямой между текущей и следующей точками, и плоскостью в позиции игрока
+	FVector PlaneIntersection = FMath::LinePlaneIntersection(CurrentPoint, OtherPoint, PlayerCurrentLocation, Zone->GetRightVector());
+
+	FVector ResultPoint = Path->FindLocationClosestToWorldLocation(PlaneIntersection, ESplineCoordinateSpace::World);
 
 	#pragma region DEBUG
 	//Отображаем линии до контрольных точек
 	DrawDebugLine(GetWorld(), CurrentTriggerPoint, CurrentPoint, FColor(0, 255, 0, 255), false, -1.0f, 0, 4.0f);
-	DrawDebugLine(GetWorld(), CurrentTriggerPoint, NextPoint, FColor(255, 0, 255, 255), false, -1.0f, 0, 2.0f);
-	DrawDebugLine(GetWorld(), CurrentTriggerPoint, PreviousPoint, FColor(255, 0, 0, 255), false, -1.0f, 0, 2.0f);
+	DrawDebugLine(GetWorld(), CurrentTriggerPoint, OtherPoint, FColor(255, 0, 255, 255), false, -1.0f, 0, 2.0f);
+	DrawDebugLine(GetWorld(), CurrentPoint, OtherPoint, FColor::Black, false, -1.0f, 0, 2.0f);
+
+	DrawDebugSphere(GetWorld(), PlaneIntersection, 10, 12, FColor::Blue, false, -1.0f, 0, 1);
+	DrawDebugSphere(GetWorld(), ResultPoint, 10, 12, FColor::Orange, false, -1.0f, 0, 1);
 	#pragma endregion
-
-	//Точка пересечения прямой между текущей и следующей точками, и плоскостью в позиции игрока
-	FVector PlaneIntersection = FMath::LinePlaneIntersection(CurrentPoint, NextPoint, CurrentTriggerPoint /*PlayerCurrentLocation*/, Zone->GetRightVector());
-
-	FVector ResultPoint = Path->FindLocationClosestToWorldLocation(PlaneIntersection, ESplineCoordinateSpace::World);
 
 	return ResultPoint;
 }
@@ -201,8 +198,11 @@ FVector ACameraZone::GetCurrentSplinePoint()
 void ACameraZone::GetCurrentPointsIndex()
 {
 	FVector RightVector = Zone->GetRightVector();
-
-	/*bool bPointFound = false;*/
+	FVector ForwardVector = Zone->GetForwardVector() * -1;
+	float MinAngle = 180.0f;
+	FVector2D DDCurrentTriggerPoint = FVector2D(CurrentTriggerPoint.X, CurrentTriggerPoint.Y);
+	FVector2D DDForwardVector = FVector2D(ForwardVector.X, ForwardVector.Y);
+	FVector2D DDRightVector = FVector2D(RightVector.X, RightVector.Y);
 
 	//Смотрим каждую контрольную точку сплайна
 	for (FSplinePoint Point : SplinePoints)
@@ -211,21 +211,16 @@ void ACameraZone::GetCurrentPointsIndex()
 		FVector PointLocation = Path->GetLocationAtSplinePoint(Point.InputKey, ESplineCoordinateSpace::World);
 
 		//Для правильных вычислений, все точки должны находится в одной плоскости
-		//2д координата промежуточной точки
-		FVector2D DDCurrentTriggerPoint = FVector2D(CurrentTriggerPoint.X, CurrentTriggerPoint.Y);
-		//2д координата контрольной точки сплайна
+		
 		FVector2D DDPointLocation = FVector2D(PointLocation.X, PointLocation.Y);
-		//2д правый вектор зоны
-		FVector2D DDRightVector = FVector2D(RightVector.X, RightVector.Y);
-		//2д вектор от промежуточной точки до контрольной точки сплайна
 		FVector2D DDFromTriggerToPoint = DDPointLocation - DDCurrentTriggerPoint;
 
 		//Угол между точкой и перпендикуляром
-		float angle = acosf(FVector2D::DotProduct(DDFromTriggerToPoint.GetSafeNormal(), DDRightVector.GetSafeNormal())) * (180 / 3.1415926);
+		float angle = acosf(FVector2D::DotProduct(DDFromTriggerToPoint.GetSafeNormal(), DDForwardVector.GetSafeNormal())) * (180 / 3.1415926);
 
 		#pragma region DEBUG
 		DrawDebugLine(GetWorld(), CurrentTriggerPoint, PointLocation, FColor(255, 255, 255, 255), false, -1.0f, 0, 1.0f);
-		DrawDebugLine(GetWorld(), CurrentTriggerPoint, CurrentTriggerPoint + RightVector * 200, FColor(0, 0, 0, 255), false, -1.0f, 0, 2.0f);
+		DrawDebugLine(GetWorld(), CurrentTriggerPoint, CurrentTriggerPoint + ForwardVector * 200, FColor(0, 0, 0, 255), false, -1.0f, 0, 2.0f);
 
 		TArray<FStringFormatArg> args;
 		args.Add(FStringFormatArg(angle));
@@ -234,32 +229,38 @@ void ACameraZone::GetCurrentPointsIndex()
 		DrawDebugString(GetWorld(), PointLocation, res, 0, FColor::White, 1.0f);
 		#pragma endregion
 
-		//Находим точку, с которой правый вектор составляет угол больше 90 градусов
-		if (angle >= 90/* && !bPointFound*/)
+		//Находим точку с минимальным углом
+		if (angle < MinAngle)
 		{
+			MinAngle = angle;
 			CurrentPointIndex = Point.InputKey;
-			/*bPointFound = true;*/
 		}
-			
 	}
 
-	//Случай когда мы в самом начале сплайна
+	//Если мы в начале сплайна
 	if (CurrentPointIndex == 0)
-	{
-		PreviousPointIndex = -1;	//Предыдущей точки нет
-		NextPointIndex = CurrentPointIndex + 1;
-	}
-	//Случай когда мы в самом конце сплайна
+		OtherPointIndex = CurrentPointIndex + 1;
+	//Если мы в конце сплайна
 	else if (CurrentPointIndex == SplinePoints.Num() - 1)
-	{
-		NextPointIndex = -1;	//Следующей точки нет
-		PreviousPointIndex = CurrentPointIndex - 1;
-	}
-	//Случай когда мы находимся внутри сплайна
+		OtherPointIndex = CurrentPointIndex - 1;
+	//Если мы внутри сплайна
 	else
 	{
-		NextPointIndex = CurrentPointIndex + 1;
-		PreviousPointIndex = CurrentPointIndex - 1;
+		//Мировая позиция контрольной точки сплайна
+		FVector PointLocation = Path->GetLocationAtSplinePoint(CurrentPointIndex, ESplineCoordinateSpace::World);
+
+		//Для правильных вычислений, все точки должны находится в одной плоскости
+		FVector2D DDPointLocation = FVector2D(PointLocation.X, PointLocation.Y);
+		FVector2D DDFromTriggerToPoint = DDPointLocation - DDCurrentTriggerPoint;
+
+		//Угол между точкой и перпендикуляром
+		float angle = acosf(FVector2D::DotProduct(DDFromTriggerToPoint.GetSafeNormal(), DDRightVector.GetSafeNormal())) * (180 / 3.1415926);
+
+		//Проверяем, находимся ли мы левее или правее текущей контрольной точки
+		if (angle < 90)
+			OtherPointIndex = CurrentPointIndex - 1;
+		else
+			OtherPointIndex = CurrentPointIndex + 1;
 	}
 }
 

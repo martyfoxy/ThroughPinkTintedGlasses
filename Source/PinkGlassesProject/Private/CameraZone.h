@@ -56,8 +56,7 @@ private:
 
 	//Индекс текущей, следующей и предыдущей точек сплайна
 	int CurrentPointIndex = -1;
-	int NextPointIndex = -1;
-	int PreviousPointIndex = -1;
+	int OtherPointIndex = -1;
 
 	//Расстояние до ближайшей точки пути
 	float CurrentShortestPath;
